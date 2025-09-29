@@ -1,0 +1,491 @@
+"use client"
+
+import type React from "react"
+
+import { useState, useEffect } from "react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Card, CardContent } from "@/components/ui/card"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Badge } from "@/components/ui/badge"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Plus, Edit, Trash2, Package } from "lucide-react"
+import { storage, addLog, generateId, type Asset, type Category, type User } from "@/lib/storage"
+import { useToast } from "@/hooks/use-toast"
+
+interface AssetManagementProps {
+  user: User
+}
+
+export function AssetManagement({ user }: AssetManagementProps) {
+  const [assets, setAssets] = useState<Asset[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
+  const [isAssetDialogOpen, setIsAssetDialogOpen] = useState(false)
+  const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false)
+  const [editingAsset, setEditingAsset] = useState<Asset | null>(null)
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null)
+  const { toast } = useToast()
+
+  // Asset form state
+  const [assetForm, setAssetForm] = useState({
+    nama: "",
+    sku: "",
+    deskripsi: "",
+    kategori: "",
+    nilai: "",
+    qty: "",
+  })
+
+  // Category form state
+  const [categoryForm, setCategoryForm] = useState({
+    nama: "",
+  })
+
+  useEffect(() => {
+    loadData()
+  }, [])
+
+  const loadData = () => {
+    setAssets(storage.getAssets())
+    setCategories(storage.getCategories())
+  }
+
+  const resetAssetForm = () => {
+    setAssetForm({
+      nama: "",
+      sku: "",
+      deskripsi: "",
+      kategori: "",
+      nilai: "",
+      qty: "",
+    })
+    setEditingAsset(null)
+  }
+
+  const resetCategoryForm = () => {
+    setCategoryForm({ nama: "" })
+    setEditingCategory(null)
+  }
+
+  const handleAssetSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!assetForm.nama || !assetForm.kategori || !assetForm.nilai || !assetForm.qty) {
+      toast({
+        title: "Error",
+        description: "Harap isi semua field yang wajib.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const assetData: Asset = {
+      id: editingAsset?.id || generateId(),
+      nama: assetForm.nama,
+      sku: assetForm.sku || undefined,
+      deskripsi: assetForm.deskripsi || undefined,
+      kategori: assetForm.kategori,
+      nilai: Number.parseFloat(assetForm.nilai),
+      qty: Number.parseInt(assetForm.qty),
+      status: editingAsset?.status || "Instock",
+    }
+
+    const currentAssets = storage.getAssets()
+    let updatedAssets: Asset[]
+
+    if (editingAsset) {
+      updatedAssets = currentAssets.map((asset) => (asset.id === editingAsset.id ? assetData : asset))
+      addLog(user.username, "Update Asset", `Updated asset: ${assetData.nama}`)
+      toast({
+        title: "Asset Diperbarui",
+        description: `Asset ${assetData.nama} berhasil diperbarui.`,
+      })
+    } else {
+      updatedAssets = [...currentAssets, assetData]
+      addLog(user.username, "Create Asset", `Created new asset: ${assetData.nama}`)
+      toast({
+        title: "Asset Ditambahkan",
+        description: `Asset ${assetData.nama} berhasil ditambahkan.`,
+      })
+    }
+
+    storage.setAssets(updatedAssets)
+    setAssets(updatedAssets)
+    setIsAssetDialogOpen(false)
+    resetAssetForm()
+  }
+
+  const handleCategorySubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!categoryForm.nama) {
+      toast({
+        title: "Error",
+        description: "Nama kategori harus diisi.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const categoryData: Category = {
+      id: editingCategory?.id || generateId(),
+      nama: categoryForm.nama,
+    }
+
+    const currentCategories = storage.getCategories()
+    let updatedCategories: Category[]
+
+    if (editingCategory) {
+      updatedCategories = currentCategories.map((cat) => (cat.id === editingCategory.id ? categoryData : cat))
+      addLog(user.username, "Update Category", `Updated category: ${categoryData.nama}`)
+      toast({
+        title: "Kategori Diperbarui",
+        description: `Kategori ${categoryData.nama} berhasil diperbarui.`,
+      })
+    } else {
+      updatedCategories = [...currentCategories, categoryData]
+      addLog(user.username, "Create Category", `Created new category: ${categoryData.nama}`)
+      toast({
+        title: "Kategori Ditambahkan",
+        description: `Kategori ${categoryData.nama} berhasil ditambahkan.`,
+      })
+    }
+
+    storage.setCategories(updatedCategories)
+    setCategories(updatedCategories)
+    setIsCategoryDialogOpen(false)
+    resetCategoryForm()
+  }
+
+  const handleEditAsset = (asset: Asset) => {
+    setEditingAsset(asset)
+    setAssetForm({
+      nama: asset.nama,
+      sku: asset.sku || "",
+      deskripsi: asset.deskripsi || "",
+      kategori: asset.kategori,
+      nilai: asset.nilai.toString(),
+      qty: asset.qty.toString(),
+    })
+    setIsAssetDialogOpen(true)
+  }
+
+  const handleEditCategory = (category: Category) => {
+    setEditingCategory(category)
+    setCategoryForm({ nama: category.nama })
+    setIsCategoryDialogOpen(true)
+  }
+
+  const handleDeleteAsset = (asset: Asset) => {
+    if (confirm(`Apakah Anda yakin ingin menghapus asset "${asset.nama}"?`)) {
+      const updatedAssets = assets.filter((a) => a.id !== asset.id)
+      storage.setAssets(updatedAssets)
+      setAssets(updatedAssets)
+      addLog(user.username, "Delete Asset", `Deleted asset: ${asset.nama}`)
+      toast({
+        title: "Asset Dihapus",
+        description: `Asset ${asset.nama} berhasil dihapus.`,
+      })
+    }
+  }
+
+  const handleDeleteCategory = (category: Category) => {
+    // Check if category is being used by any assets
+    const assetsUsingCategory = assets.filter((asset) => asset.kategori === category.nama)
+    if (assetsUsingCategory.length > 0) {
+      toast({
+        title: "Tidak Dapat Menghapus",
+        description: `Kategori "${category.nama}" masih digunakan oleh ${assetsUsingCategory.length} asset.`,
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (confirm(`Apakah Anda yakin ingin menghapus kategori "${category.nama}"?`)) {
+      const updatedCategories = categories.filter((c) => c.id !== category.id)
+      storage.setCategories(updatedCategories)
+      setCategories(updatedCategories)
+      addLog(user.username, "Delete Category", `Deleted category: ${category.nama}`)
+      toast({
+        title: "Kategori Dihapus",
+        description: `Kategori ${category.nama} berhasil dihapus.`,
+      })
+    }
+  }
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
+    }).format(value)
+  }
+
+  return (
+    <div className="space-y-6">
+      <Tabs defaultValue="assets" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="assets">Assets</TabsTrigger>
+          <TabsTrigger value="categories">Kategori</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="assets" className="space-y-4">
+          <div className="flex justify-between items-center">
+            <div>
+              <h3 className="text-lg font-semibold">Daftar Assets</h3>
+              <p className="text-sm text-muted-foreground">Kelola semua assets perusahaan</p>
+            </div>
+            <Dialog open={isAssetDialogOpen} onOpenChange={setIsAssetDialogOpen}>
+              <DialogTrigger asChild>
+                <Button onClick={resetAssetForm}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Tambah Asset
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>{editingAsset ? "Edit Asset" : "Tambah Asset Baru"}</DialogTitle>
+                  <DialogDescription>
+                    {editingAsset ? "Perbarui informasi asset" : "Masukkan informasi asset baru"}
+                  </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleAssetSubmit} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="nama">Nama Asset *</Label>
+                    <Input
+                      id="nama"
+                      value={assetForm.nama}
+                      onChange={(e) => setAssetForm({ ...assetForm, nama: e.target.value })}
+                      placeholder="Masukkan nama asset"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="sku">SKU (Opsional)</Label>
+                    <Input
+                      id="sku"
+                      value={assetForm.sku}
+                      onChange={(e) => setAssetForm({ ...assetForm, sku: e.target.value })}
+                      placeholder="Masukkan SKU"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="deskripsi">Deskripsi (Opsional)</Label>
+                    <Textarea
+                      id="deskripsi"
+                      value={assetForm.deskripsi}
+                      onChange={(e) => setAssetForm({ ...assetForm, deskripsi: e.target.value })}
+                      placeholder="Masukkan deskripsi asset"
+                      rows={3}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="kategori">Kategori *</Label>
+                    <Select
+                      value={assetForm.kategori}
+                      onValueChange={(value) => setAssetForm({ ...assetForm, kategori: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Pilih kategori" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categories.map((category) => (
+                          <SelectItem key={category.id} value={category.nama}>
+                            {category.nama}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="nilai">Nilai (IDR) *</Label>
+                      <Input
+                        id="nilai"
+                        type="number"
+                        value={assetForm.nilai}
+                        onChange={(e) => setAssetForm({ ...assetForm, nilai: e.target.value })}
+                        placeholder="0"
+                        min="0"
+                        step="0.01"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="qty">Quantity *</Label>
+                      <Input
+                        id="qty"
+                        type="number"
+                        value={assetForm.qty}
+                        onChange={(e) => setAssetForm({ ...assetForm, qty: e.target.value })}
+                        placeholder="0"
+                        min="1"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end space-x-2">
+                    <Button type="button" variant="outline" onClick={() => setIsAssetDialogOpen(false)}>
+                      Batal
+                    </Button>
+                    <Button type="submit">{editingAsset ? "Perbarui" : "Tambah"}</Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </div>
+
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nama Asset</TableHead>
+                    <TableHead>SKU</TableHead>
+                    <TableHead>Kategori</TableHead>
+                    <TableHead>Nilai</TableHead>
+                    <TableHead>Qty</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Aksi</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {assets.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-8">
+                        <Package className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                        <p className="text-muted-foreground">Belum ada asset yang ditambahkan</p>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    assets.map((asset) => (
+                      <TableRow key={asset.id}>
+                        <TableCell className="font-medium">{asset.nama}</TableCell>
+                        <TableCell>{asset.sku || "-"}</TableCell>
+                        <TableCell>{asset.kategori}</TableCell>
+                        <TableCell>{formatCurrency(asset.nilai)}</TableCell>
+                        <TableCell>{asset.qty}</TableCell>
+                        <TableCell>
+                          <Badge variant={asset.status === "Instock" ? "default" : "secondary"}>{asset.status}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end space-x-2">
+                            <Button variant="outline" size="sm" onClick={() => handleEditAsset(asset)}>
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => handleDeleteAsset(asset)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="categories" className="space-y-4">
+          <div className="flex justify-between items-center">
+            <div>
+              <h3 className="text-lg font-semibold">Kategori Assets</h3>
+              <p className="text-sm text-muted-foreground">Kelola kategori untuk mengorganisir assets</p>
+            </div>
+            <Dialog open={isCategoryDialogOpen} onOpenChange={setIsCategoryDialogOpen}>
+              <DialogTrigger asChild>
+                <Button onClick={resetCategoryForm}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Tambah Kategori
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>{editingCategory ? "Edit Kategori" : "Tambah Kategori Baru"}</DialogTitle>
+                  <DialogDescription>
+                    {editingCategory ? "Perbarui nama kategori" : "Masukkan nama kategori baru"}
+                  </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleCategorySubmit} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="categoryName">Nama Kategori</Label>
+                    <Input
+                      id="categoryName"
+                      value={categoryForm.nama}
+                      onChange={(e) => setCategoryForm({ nama: e.target.value })}
+                      placeholder="Masukkan nama kategori"
+                      required
+                    />
+                  </div>
+                  <div className="flex justify-end space-x-2">
+                    <Button type="button" variant="outline" onClick={() => setIsCategoryDialogOpen(false)}>
+                      Batal
+                    </Button>
+                    <Button type="submit">{editingCategory ? "Perbarui" : "Tambah"}</Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </div>
+
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>ID Kategori</TableHead>
+                    <TableHead>Nama Kategori</TableHead>
+                    <TableHead>Jumlah Assets</TableHead>
+                    <TableHead className="text-right">Aksi</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {categories.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center py-8">
+                        <Package className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                        <p className="text-muted-foreground">Belum ada kategori yang ditambahkan</p>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    categories.map((category) => {
+                      const assetCount = assets.filter((asset) => asset.kategori === category.nama).length
+                      return (
+                        <TableRow key={category.id}>
+                          <TableCell className="font-mono text-sm">{category.id}</TableCell>
+                          <TableCell className="font-medium">{category.nama}</TableCell>
+                          <TableCell>{assetCount} assets</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end space-x-2">
+                              <Button variant="outline" size="sm" onClick={() => handleEditCategory(category)}>
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button variant="outline" size="sm" onClick={() => handleDeleteCategory(category)}>
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  )
+}
