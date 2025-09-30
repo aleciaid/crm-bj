@@ -144,7 +144,40 @@ export const storage = {
   // Version logs management
   getVersionLogs: (): VersionLogEntry[] => {
     const raw = localStorage.getItem(STORAGE_KEYS.VERSION_LOGS)
-    return raw ? JSON.parse(raw) : []
+    if (raw) return JSON.parse(raw)
+    // Default seeded version logs (hardcoded) when none stored
+    const seeded: VersionLogEntry[] = [
+      {
+        id: "2025-09-30-001",
+        version: "1.2.0",
+        date: new Date().toISOString().split("T")[0],
+        changes: [
+          "Tambah Version Log manual (add/edit/delete)",
+          "Tambah tombol Generate SKU unik pada form asset",
+          "Kirim webhook untuk peminjaman & pengembalian dari Guest",
+          "Popup sukses setelah peminjaman Guest dengan detail lengkap",
+        ],
+      },
+      {
+        id: "2025-09-29-001",
+        version: "1.1.0",
+        date: new Date(Date.now() - 86400000).toISOString().split("T")[0],
+        changes: [
+          "Tambah konfigurasi webhook peminjaman & pengembalian",
+          "Integrasi log history ekspor CSV dan filter lanjutan",
+        ],
+      },
+      {
+        id: "2025-09-28-001",
+        version: "1.0.0",
+        date: new Date(Date.now() - 2 * 86400000).toISOString().split("T")[0],
+        changes: [
+          "Rilis awal: Manajemen Asset, Peminjaman, Pengembalian, Guest Access",
+        ],
+      },
+    ]
+    // Do not persist by default; allow user to push/store when ready
+    return seeded
   },
 
   setVersionLogs: (entries: VersionLogEntry[]) => {

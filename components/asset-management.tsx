@@ -20,7 +20,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Plus, Edit, Trash2, Package, Camera } from "lucide-react"
+import { Plus, Edit, Trash2, Package } from "lucide-react"
 import { storage, addLog, generateId, type Asset, type Category, type User } from "@/lib/storage"
 import { useToast } from "@/hooks/use-toast"
 
@@ -35,7 +35,6 @@ export function AssetManagement({ user }: AssetManagementProps) {
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false)
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null)
   const [editingCategory, setEditingCategory] = useState<Category | null>(null)
-  const [isScanning, setIsScanning] = useState(false)
   const { toast } = useToast()
 
   // Asset form state
@@ -244,228 +243,6 @@ export function AssetManagement({ user }: AssetManagementProps) {
     toast({ title: "SKU Dibuat", description: `SKU: ${sku}` })
   }
 
-  // Barcode validation helpers for linear barcodes (EAN-13, EAN-8, UPC-A)
-  const calculateEAN13CheckDigit = (num12: string) => {
-    const digits = num12.split("").map((d) => Number(d))
-    const sum = digits.reduce((acc, d, idx) => acc + d * (idx % 2 === 0 ? 1 : 3), 0)
-    const mod = sum % 10
-    return mod === 0 ? 0 : 10 - mod
-  }
-
-  const validateEAN13 = (value: string) => {
-    if (!/^\d{13}$/.test(value)) return false
-    const check = Number(value[12])
-    const calc = calculateEAN13CheckDigit(value.slice(0, 12))
-    return check === calc
-  }
-
-  const validateEAN8 = (value: string) => {
-    if (!/^\d{8}$/.test(value)) return false
-    const digits = value.split("").map((d) => Number(d))
-    const sum = digits.slice(0, 7).reduce((acc, d, idx) => acc + d * (idx % 2 === 0 ? 3 : 1), 0)
-    const check = (10 - (sum % 10)) % 10
-    return check === digits[7]
-  }
-
-  const validateUPCA = (value: string) => {
-    if (!/^\d{12}$/.test(value)) return false
-    const digits = value.split("").map((d) => Number(d))
-    const sumOdd = digits.slice(0, 11).reduce((acc, d, idx) => acc + (idx % 2 === 0 ? d : 0), 0)
-    const sumEven = digits.slice(0, 11).reduce((acc, d, idx) => acc + (idx % 2 === 1 ? d : 0), 0)
-    const total = sumOdd * 3 + sumEven
-    const check = (10 - (total % 10)) % 10
-    return check === digits[11]
-  }
-
-  const tryAcceptBarcode = (raw: string): boolean => {
-    const trimmed = String(raw).trim()
-    // Only accept numeric linear barcodes
-    if (!/^\d{8}$|^\d{12}$|^\d{13}$/.test(trimmed)) {
-      toast({ title: "Barcode Tidak Valid", description: "Hanya menerima barcode batang numerik (EAN-8/UPC-A/EAN-13)", variant: "destructive" })
-      return false
-    }
-    const ok = trimmed.length === 13 ? validateEAN13(trimmed) : trimmed.length === 8 ? validateEAN8(trimmed) : validateUPCA(trimmed)
-    if (!ok) {
-      toast({ title: "Barcode Gagal Diverifikasi", description: "Checksum barcode tidak sesuai. Coba scan ulang.", variant: "destructive" })
-      return false
-    }
-    setAssetForm((prev) => ({ ...prev, sku: trimmed }))
-    toast({ title: "Barcode Terdeteksi", description: `SKU: ${trimmed}` })
-    return true
-  }
-
-  const startBarcodeScan = async () => {
-    try {
-      setIsScanning(true)
-      
-      // Check if the browser supports camera access
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        toast({
-          title: "Error",
-          description: "Browser tidak mendukung akses kamera untuk scan barcode.",
-          variant: "destructive",
-        })
-        return
-      }
-
-      // Request camera access
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          facingMode: 'environment' // Use back camera if available
-        } 
-      })
-
-      // Create a video element for camera preview
-      const video = document.createElement('video')
-      video.srcObject = stream
-      video.play()
-
-      // Create a canvas for capturing frames
-      const canvas = document.createElement('canvas')
-      const ctx = canvas.getContext('2d')
-
-      // Create a modal for camera preview
-      const modal = document.createElement('div')
-      modal.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.8);
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        z-index: 9999;
-      `
-
-      const videoContainer = document.createElement('div')
-      videoContainer.style.cssText = `
-        position: relative;
-        width: 80%;
-        max-width: 500px;
-        background: white;
-        border-radius: 8px;
-        overflow: hidden;
-      `
-
-      const closeBtn = document.createElement('button')
-      closeBtn.innerHTML = '✕'
-      closeBtn.style.cssText = `
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        background: rgba(0,0,0,0.7);
-        color: white;
-        border: none;
-        border-radius: 50%;
-        width: 30px;
-        height: 30px;
-        cursor: pointer;
-        z-index: 10000;
-      `
-
-      const instruction = document.createElement('div')
-      instruction.innerHTML = 'Arahkan kamera ke barcode untuk scan'
-      instruction.style.cssText = `
-        position: absolute;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: rgba(0,0,0,0.7);
-        color: white;
-        padding: 10px 20px;
-        border-radius: 20px;
-        font-size: 14px;
-      `
-
-      videoContainer.appendChild(video)
-      videoContainer.appendChild(closeBtn)
-      videoContainer.appendChild(instruction)
-      modal.appendChild(videoContainer)
-      document.body.appendChild(modal)
-
-      // Handle close button
-      const closeModal = () => {
-        stream.getTracks().forEach(track => track.stop())
-        document.body.removeChild(modal)
-        setIsScanning(false)
-      }
-
-      closeBtn.onclick = closeModal
-      modal.onclick = (e) => {
-        if (e.target === modal) closeModal()
-      }
-
-      // Barcode detection using BarcodeDetector when available
-      let detected = false
-      let scanInterval: number | undefined
-
-      const fallbackSimulate = () => {
-        // Fallback: simulate after 3s if no BarcodeDetector
-        window.setTimeout(() => {
-          if (detected) return
-          if (scanInterval) window.clearInterval(scanInterval)
-          detected = true
-          closeModal()
-          // Generate valid EAN-13 for simulation
-          const base = Array.from({ length: 12 }, () => Math.floor(Math.random() * 10)).join("")
-          const check = calculateEAN13CheckDigit(base)
-          const simulated = `${base}${check}`
-          setAssetForm((prev) => ({ ...prev, sku: simulated }))
-          toast({ title: "Barcode Disimulasikan", description: `SKU: ${simulated}` })
-        }, 3000)
-      }
-
-      // @ts-expect-error: BarcodeDetector may not exist in TS lib
-      const HasBarcodeDetector = typeof window !== "undefined" && window.BarcodeDetector
-      // @ts-expect-error: BarcodeDetector may not exist in TS lib
-      const Supported = HasBarcodeDetector && (await window.BarcodeDetector.getSupportedFormats?.())
-
-      if (HasBarcodeDetector && Supported && Supported.length) {
-        // @ts-expect-error: BarcodeDetector type
-        const detector = new window.BarcodeDetector({ formats: [
-          "code_128", "code_39", "ean_13", "ean_8", "upc_a", "upc_e", "itf", "qr_code"
-        ] })
-
-        scanInterval = window.setInterval(async () => {
-          if (detected) return
-          if (video.readyState === video.HAVE_ENOUGH_DATA) {
-            try {
-              const results = await detector.detect(video as unknown as CanvasImageSource)
-              if (results && results.length > 0) {
-                const raw = results[0].rawValue || results[0].raw || ""
-                const accepted = tryAcceptBarcode(String(raw))
-                if (accepted) {
-                  detected = true
-                  if (scanInterval) window.clearInterval(scanInterval)
-                  closeModal()
-                }
-              }
-            } catch {
-              // ignore per frame errors
-            }
-          }
-        }, 150)
-
-        // Also set a safety fallback in case no detection occurs
-        fallbackSimulate()
-      } else {
-        // Fallback path when BarcodeDetector is not available
-        fallbackSimulate()
-      }
-
-    } catch (error) {
-      setIsScanning(false)
-      toast({
-        title: "Error",
-        description: "Gagal mengakses kamera. Pastikan izin kamera telah diberikan.",
-        variant: "destructive",
-      })
-    }
-  }
-
   return (
     <div className="space-y-6">
       <Tabs defaultValue="assets" className="w-full">
@@ -525,17 +302,7 @@ export function AssetManagement({ user }: AssetManagementProps) {
                       >
                         Generate
                       </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={startBarcodeScan}
-                        disabled={isScanning}
-                        className="px-3"
-                        title="Scan Barcode"
-                      >
-                        <Camera className="h-4 w-4" />
-                      </Button>
+                      {/* Camera scan removed per request */}
                     </div>
                   </div>
                   <div className="space-y-2">
