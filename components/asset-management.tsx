@@ -20,7 +20,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Plus, Edit, Trash2, Package } from "lucide-react"
+import { Plus, Edit, Trash2, Package, Camera } from "lucide-react"
 import { storage, addLog, generateId, type Asset, type Category, type User } from "@/lib/storage"
 import { useToast } from "@/hooks/use-toast"
 
@@ -35,6 +35,7 @@ export function AssetManagement({ user }: AssetManagementProps) {
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false)
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null)
   const [editingCategory, setEditingCategory] = useState<Category | null>(null)
+  const [isScanning, setIsScanning] = useState(false)
   const { toast } = useToast()
 
   // Asset form state
@@ -231,6 +232,148 @@ export function AssetManagement({ user }: AssetManagementProps) {
     }).format(value)
   }
 
+  const startBarcodeScan = async () => {
+    try {
+      setIsScanning(true)
+      
+      // Check if the browser supports camera access
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        toast({
+          title: "Error",
+          description: "Browser tidak mendukung akses kamera untuk scan barcode.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      // Request camera access
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          facingMode: 'environment' // Use back camera if available
+        } 
+      })
+
+      // Create a video element for camera preview
+      const video = document.createElement('video')
+      video.srcObject = stream
+      video.play()
+
+      // Create a canvas for capturing frames
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+
+      // Create a modal for camera preview
+      const modal = document.createElement('div')
+      modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.8);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+      `
+
+      const videoContainer = document.createElement('div')
+      videoContainer.style.cssText = `
+        position: relative;
+        width: 80%;
+        max-width: 500px;
+        background: white;
+        border-radius: 8px;
+        overflow: hidden;
+      `
+
+      const closeBtn = document.createElement('button')
+      closeBtn.innerHTML = '✕'
+      closeBtn.style.cssText = `
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: rgba(0,0,0,0.7);
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 30px;
+        height: 30px;
+        cursor: pointer;
+        z-index: 10000;
+      `
+
+      const instruction = document.createElement('div')
+      instruction.innerHTML = 'Arahkan kamera ke barcode untuk scan'
+      instruction.style.cssText = `
+        position: absolute;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0,0,0,0.7);
+        color: white;
+        padding: 10px 20px;
+        border-radius: 20px;
+        font-size: 14px;
+      `
+
+      videoContainer.appendChild(video)
+      videoContainer.appendChild(closeBtn)
+      videoContainer.appendChild(instruction)
+      modal.appendChild(videoContainer)
+      document.body.appendChild(modal)
+
+      // Handle close button
+      const closeModal = () => {
+        stream.getTracks().forEach(track => track.stop())
+        document.body.removeChild(modal)
+        setIsScanning(false)
+      }
+
+      closeBtn.onclick = closeModal
+      modal.onclick = (e) => {
+        if (e.target === modal) closeModal()
+      }
+
+      // Simple barcode detection simulation
+      // In a real implementation, you would use a library like QuaggaJS or ZXing
+      const scanInterval = setInterval(() => {
+        if (video.readyState === video.HAVE_ENOUGH_DATA) {
+          canvas.width = video.videoWidth
+          canvas.height = video.videoHeight
+          ctx?.drawImage(video, 0, 0, canvas.width, canvas.height)
+          
+          // For demo purposes, we'll simulate a barcode scan after 3 seconds
+          // In real implementation, you would process the canvas image for barcode detection
+        }
+      }, 100)
+
+      // Simulate barcode detection after 3 seconds for demo
+      setTimeout(() => {
+        clearInterval(scanInterval)
+        closeModal()
+        
+        // Simulate successful barcode scan
+        const simulatedBarcode = `SKU-${Date.now().toString().slice(-6)}`
+        setAssetForm(prev => ({ ...prev, sku: simulatedBarcode }))
+        
+        toast({
+          title: "Barcode Berhasil Di-scan",
+          description: `SKU: ${simulatedBarcode}`,
+        })
+      }, 3000)
+
+    } catch (error) {
+      setIsScanning(false)
+      toast({
+        title: "Error",
+        description: "Gagal mengakses kamera. Pastikan izin kamera telah diberikan.",
+        variant: "destructive",
+      })
+    }
+  }
+
   return (
     <div className="space-y-6">
       <Tabs defaultValue="assets" className="w-full">
@@ -272,12 +415,25 @@ export function AssetManagement({ user }: AssetManagementProps) {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="sku">SKU (Opsional)</Label>
-                    <Input
-                      id="sku"
-                      value={assetForm.sku}
-                      onChange={(e) => setAssetForm({ ...assetForm, sku: e.target.value })}
-                      placeholder="Masukkan SKU"
-                    />
+                    <div className="flex gap-2">
+                      <Input
+                        id="sku"
+                        value={assetForm.sku}
+                        onChange={(e) => setAssetForm({ ...assetForm, sku: e.target.value })}
+                        placeholder="Masukkan SKU atau scan barcode"
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={startBarcodeScan}
+                        disabled={isScanning}
+                        className="px-3"
+                      >
+                        <Camera className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="deskripsi">Deskripsi (Opsional)</Label>

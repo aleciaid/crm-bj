@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { X, Search, Package, Users, ArrowLeft } from "lucide-react"
+import { X, Search, Package, Users, ArrowLeft, CheckCircle, Copy } from "lucide-react"
 import { storage, addLog, sendBorrowWebhook, sendReturnWebhook, type BorrowRecord } from "@/lib/storage"
 import { useToast } from "@/hooks/use-toast"
 
@@ -35,6 +35,10 @@ export function GuestAccess({ onBack }: GuestAccessProps) {
     borrowId: "",
     foundBorrow: null as BorrowRecord | null,
   })
+
+  // Success popup state
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false)
+  const [successBorrowData, setSuccessBorrowData] = useState<BorrowRecord | null>(null)
 
   const [searchTerm, setSearchTerm] = useState("")
 
@@ -102,10 +106,9 @@ export function GuestAccess({ onBack }: GuestAccessProps) {
       addLog("Guest", "Webhook Failed", `Failed to send borrow webhook for ${borrowId}`)
     }
 
-    toast({
-      title: "Peminjaman Berhasil",
-      description: `ID Peminjaman: ${borrowId}`,
-    })
+    // Show success popup
+    setSuccessBorrowData(newBorrow)
+    setShowSuccessPopup(true)
 
     // Reset form
     setBorrowForm({
@@ -205,6 +208,39 @@ export function GuestAccess({ onBack }: GuestAccessProps) {
   }
 
   const getAssetById = (id: string) => assets.find((asset) => asset.id === id)
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      toast({
+        title: "Berhasil",
+        description: "ID Peminjaman berhasil disalin ke clipboard",
+      })
+    }).catch(() => {
+      toast({
+        title: "Error",
+        description: "Gagal menyalin ke clipboard",
+        variant: "destructive",
+      })
+    })
+  }
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString("id-ID", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    })
+  }
+
+  const calculateReturnDate = (borrowDate: string, duration: number) => {
+    const date = new Date(borrowDate)
+    date.setDate(date.getDate() + duration)
+    return date.toLocaleDateString("id-ID", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    })
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -448,6 +484,103 @@ export function GuestAccess({ onBack }: GuestAccessProps) {
           </div>
         )}
       </main>
+
+      {/* Success Popup */}
+      {showSuccessPopup && successBorrowData && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-center mb-4">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
+                  <CheckCircle className="w-8 h-8 text-green-600" />
+                </div>
+              </div>
+              
+              <h2 className="text-2xl font-bold text-center text-green-600 mb-2">
+                Peminjaman Berhasil!
+              </h2>
+              
+              <p className="text-center text-gray-600 mb-6">
+                Asset berhasil dipinjamkan. Simpan ID Peminjaman untuk pengembalian.
+              </p>
+
+              <div className="space-y-4">
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-medium text-gray-700">ID Peminjaman:</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => copyToClipboard(successBorrowData.id)}
+                    >
+                      <Copy className="w-4 h-4 mr-1" />
+                      Salin
+                    </Button>
+                  </div>
+                  <p className="font-mono text-lg text-gray-900">{successBorrowData.id}</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-500">Nama Pegawai:</span>
+                    <p className="font-medium">{successBorrowData.namaPegawai}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">ID Pegawai:</span>
+                    <p className="font-medium">{successBorrowData.idPegawai}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Tanggal Pinjam:</span>
+                    <p className="font-medium">{formatDate(successBorrowData.tanggalPinjam)}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Tanggal Kembali:</span>
+                    <p className="font-medium">{calculateReturnDate(successBorrowData.tanggalPinjam, successBorrowData.lamaDipinjam)}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-gray-500 text-sm">Asset yang Dipinjam:</span>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {successBorrowData.assets.map((assetId) => {
+                      const asset = getAssetById(assetId)
+                      return asset ? (
+                        <Badge key={assetId} variant="secondary">
+                          {asset.nama}
+                        </Badge>
+                      ) : null
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-gray-500 text-sm">Kebutuhan:</span>
+                  <p className="text-sm mt-1">{successBorrowData.kebutuhan}</p>
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowSuccessPopup(false)}
+                >
+                  Tutup
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={() => {
+                    setShowSuccessPopup(false)
+                    setActiveTab("return")
+                  }}
+                >
+                  Kembalikan Asset
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
