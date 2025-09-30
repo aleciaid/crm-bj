@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Calendar, Search, Filter, Download, History, Trash2 } from "lucide-react"
+import { Calendar, Search, Filter, Download, History, Trash2, Plus, Edit } from "lucide-react"
 import { storage, type LogEntry, type User } from "@/lib/storage"
 import { useToast } from "@/hooks/use-toast"
 
@@ -24,6 +24,16 @@ export function HistoryLogging({ user }: HistoryLoggingProps) {
   const [userFilter, setUserFilter] = useState("all")
   const [dateFilter, setDateFilter] = useState("")
   const { toast } = useToast()
+
+  // Manual log dialog state
+  const [isLogDialogOpen, setIsLogDialogOpen] = useState(false)
+  const [editingLog, setEditingLog] = useState<LogEntry | null>(null)
+  const [logForm, setLogForm] = useState({
+    timestamp: "",
+    user: "",
+    action: "",
+    details: "",
+  })
 
   useEffect(() => {
     loadLogs()
@@ -115,6 +125,66 @@ export function HistoryLogging({ user }: HistoryLoggingProps) {
     }
   }
 
+  const openCreateLog = () => {
+    setEditingLog(null)
+    setLogForm({
+      timestamp: new Date().toISOString(),
+      user: user.username,
+      action: "Custom",
+      details: "",
+    })
+    setIsLogDialogOpen(true)
+  }
+
+  const openEditLog = (log: LogEntry) => {
+    setEditingLog(log)
+    setLogForm({
+      timestamp: log.timestamp,
+      user: log.user,
+      action: log.action,
+      details: log.details,
+    })
+    setIsLogDialogOpen(true)
+  }
+
+  const saveLog = (e: React.FormEvent) => {
+    e.preventDefault()
+    const currentLogs = storage.getLogs()
+
+    if (editingLog) {
+      // Update existing
+      const updated = currentLogs.map((l) => (l.id === editingLog.id ? { ...editingLog, ...logForm } : l))
+      storage.setLogs(updated)
+      setLogs(updated.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()))
+      toast({ title: "Log Diperbarui", description: `Log ${editingLog.id} diperbarui.` })
+    } else {
+      // Create new
+      const newLog: LogEntry = {
+        id: Date.now().toString(),
+        timestamp: logForm.timestamp || new Date().toISOString(),
+        user: logForm.user || user.username,
+        action: logForm.action || "Custom",
+        details: logForm.details,
+      }
+      const updated = [newLog, ...currentLogs]
+      storage.setLogs(updated)
+      setLogs(updated.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()))
+      toast({ title: "Log Ditambahkan", description: `Log baru ditambahkan.` })
+    }
+
+    setIsLogDialogOpen(false)
+    setEditingLog(null)
+  }
+
+  const deleteLog = (logId: string) => {
+    if (!confirm("Hapus log ini?")) return
+    const currentLogs = storage.getLogs()
+    const updated = currentLogs.filter((l) => l.id !== logId)
+    storage.setLogs(updated)
+    setLogs(updated.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()))
+    toast({ title: "Log Dihapus", description: `Log ${logId} dihapus.` })
+  }
+
   const formatTimestamp = (timestamp: string) => {
     return new Date(timestamp).toLocaleString("id-ID", {
       year: "numeric",
@@ -164,6 +234,10 @@ export function HistoryLogging({ user }: HistoryLoggingProps) {
           <p className="text-sm text-muted-foreground">Riwayat semua aktivitas sistem</p>
         </div>
         <div className="flex space-x-2">
+          <Button size="sm" onClick={openCreateLog}>
+            <Plus className="h-4 w-4 mr-2" />
+            Tambah Log
+          </Button>
           <Button variant="outline" size="sm" onClick={exportLogs}>
             <Download className="h-4 w-4 mr-2" />
             Export CSV
@@ -288,8 +362,16 @@ export function HistoryLogging({ user }: HistoryLoggingProps) {
                   <TableRow key={log.id}>
                     <TableCell className="font-mono text-sm">{formatTimestamp(log.timestamp)}</TableCell>
                     <TableCell>
-                      <div className="flex items-center space-x-2">
+                      <div className="flex items-center justify-between">
                         <span className="font-medium">{log.user}</span>
+                        <div className="flex gap-2">
+                          <Button variant="outline" size="sm" onClick={() => openEditLog(log)}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => deleteLog(log.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -307,6 +389,59 @@ export function HistoryLogging({ user }: HistoryLoggingProps) {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Manual Log Dialog */}
+      {isLogDialogOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-lg max-w-md w-full">
+            <div className="p-6">
+              <h3 className="text-lg font-semibold mb-4">{editingLog ? "Edit Log" : "Tambah Log"}</h3>
+              <form onSubmit={saveLog} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="logTimestamp">Waktu</Label>
+                  <Input
+                    id="logTimestamp"
+                    type="datetime-local"
+                    value={logForm.timestamp ? new Date(logForm.timestamp).toISOString().slice(0,16) : ""}
+                    onChange={(e) => setLogForm({ ...logForm, timestamp: new Date(e.target.value).toISOString() })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="logUser">User</Label>
+                  <Input
+                    id="logUser"
+                    value={logForm.user}
+                    onChange={(e) => setLogForm({ ...logForm, user: e.target.value })}
+                    placeholder="Nama user"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="logAction">Aksi</Label>
+                  <Input
+                    id="logAction"
+                    value={logForm.action}
+                    onChange={(e) => setLogForm({ ...logForm, action: e.target.value })}
+                    placeholder="Misal: Update Config"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="logDetails">Detail</Label>
+                  <Input
+                    id="logDetails"
+                    value={logForm.details}
+                    onChange={(e) => setLogForm({ ...logForm, details: e.target.value })}
+                    placeholder="Keterangan perubahan"
+                  />
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <Button type="button" variant="outline" onClick={() => setIsLogDialogOpen(false)}>Batal</Button>
+                  <Button type="submit">Simpan</Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Statistics */}
       {logs.length > 0 && (

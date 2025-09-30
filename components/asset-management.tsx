@@ -232,6 +232,18 @@ export function AssetManagement({ user }: AssetManagementProps) {
     }).format(value)
   }
 
+  const generateUniqueSku = () => {
+    const currentAssets = storage.getAssets()
+    let sku = ""
+    do {
+      const randomPart = Math.random().toString(36).toUpperCase().slice(2, 8)
+      sku = `SKU-${randomPart}`
+    } while (currentAssets.some((a) => (a.sku || "") === sku))
+
+    setAssetForm((prev) => ({ ...prev, sku }))
+    toast({ title: "SKU Dibuat", description: `SKU: ${sku}` })
+  }
+
   const startBarcodeScan = async () => {
     try {
       setIsScanning(true)
@@ -336,33 +348,60 @@ export function AssetManagement({ user }: AssetManagementProps) {
         if (e.target === modal) closeModal()
       }
 
-      // Simple barcode detection simulation
-      // In a real implementation, you would use a library like QuaggaJS or ZXing
-      const scanInterval = setInterval(() => {
-        if (video.readyState === video.HAVE_ENOUGH_DATA) {
-          canvas.width = video.videoWidth
-          canvas.height = video.videoHeight
-          ctx?.drawImage(video, 0, 0, canvas.width, canvas.height)
-          
-          // For demo purposes, we'll simulate a barcode scan after 3 seconds
-          // In real implementation, you would process the canvas image for barcode detection
-        }
-      }, 100)
+      // Barcode detection using BarcodeDetector when available
+      let detected = false
+      let scanInterval: number | undefined
 
-      // Simulate barcode detection after 3 seconds for demo
-      setTimeout(() => {
-        clearInterval(scanInterval)
-        closeModal()
-        
-        // Simulate successful barcode scan
-        const simulatedBarcode = `SKU-${Date.now().toString().slice(-6)}`
-        setAssetForm(prev => ({ ...prev, sku: simulatedBarcode }))
-        
-        toast({
-          title: "Barcode Berhasil Di-scan",
-          description: `SKU: ${simulatedBarcode}`,
-        })
-      }, 3000)
+      const fallbackSimulate = () => {
+        // Fallback: simulate after 3s if no BarcodeDetector
+        window.setTimeout(() => {
+          if (detected) return
+          if (scanInterval) window.clearInterval(scanInterval)
+          detected = true
+          closeModal()
+          const simulated = `SKU-${Date.now().toString().slice(-6)}`
+          setAssetForm((prev) => ({ ...prev, sku: simulated }))
+          toast({ title: "Barcode Disimulasikan", description: `SKU: ${simulated}` })
+        }, 3000)
+      }
+
+      // @ts-expect-error: BarcodeDetector may not exist in TS lib
+      const HasBarcodeDetector = typeof window !== "undefined" && window.BarcodeDetector
+      // @ts-expect-error: BarcodeDetector may not exist in TS lib
+      const Supported = HasBarcodeDetector && (await window.BarcodeDetector.getSupportedFormats?.())
+
+      if (HasBarcodeDetector && Supported && Supported.length) {
+        // @ts-expect-error: BarcodeDetector type
+        const detector = new window.BarcodeDetector({ formats: [
+          "code_128", "code_39", "ean_13", "ean_8", "upc_a", "upc_e", "itf", "qr_code"
+        ] })
+
+        scanInterval = window.setInterval(async () => {
+          if (detected) return
+          if (video.readyState === video.HAVE_ENOUGH_DATA) {
+            try {
+              const results = await detector.detect(video as unknown as CanvasImageSource)
+              if (results && results.length > 0) {
+                detected = true
+                if (scanInterval) window.clearInterval(scanInterval)
+                closeModal()
+                const raw = results[0].rawValue || results[0].raw || ""
+                const value = String(raw)
+                setAssetForm((prev) => ({ ...prev, sku: value }))
+                toast({ title: "Barcode Terdeteksi", description: `SKU: ${value}` })
+              }
+            } catch {
+              // ignore per frame errors
+            }
+          }
+        }, 150)
+
+        // Also set a safety fallback in case no detection occurs
+        fallbackSimulate()
+      } else {
+        // Fallback path when BarcodeDetector is not available
+        fallbackSimulate()
+      }
 
     } catch (error) {
       setIsScanning(false)
@@ -414,7 +453,7 @@ export function AssetManagement({ user }: AssetManagementProps) {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="sku">SKU (Opsional)</Label>
+                    <Label htmlFor="sku">SKU</Label>
                     <div className="flex gap-2">
                       <Input
                         id="sku"
@@ -427,9 +466,20 @@ export function AssetManagement({ user }: AssetManagementProps) {
                         type="button"
                         variant="outline"
                         size="sm"
+                        onClick={generateUniqueSku}
+                        className="px-3"
+                        title="Generate SKU"
+                      >
+                        Generate
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
                         onClick={startBarcodeScan}
                         disabled={isScanning}
                         className="px-3"
+                        title="Scan Barcode"
                       >
                         <Camera className="h-4 w-4" />
                       </Button>
