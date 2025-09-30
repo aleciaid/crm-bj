@@ -49,6 +49,13 @@ export interface LogEntry {
   details: string
 }
 
+export interface VersionLogEntry {
+  id: string
+  version: string
+  date: string
+  changes: string[]
+}
+
 export interface WebhookConfig {
   borrowWebhook: string
   returnWebhook: string
@@ -64,6 +71,7 @@ const STORAGE_KEYS = {
   LOGS: "cimbj_logs",
   THEME: "cimbj_theme",
   WEBHOOKS: "cimbj_webhooks",
+  VERSION_LOGS: "cimbj_version_logs",
 } as const
 
 // Storage utilities
@@ -131,6 +139,16 @@ export const storage = {
   getTheme: (): "light" | "dark" => {
     const theme = localStorage.getItem(STORAGE_KEYS.THEME)
     return theme === "light" ? "light" : "dark"
+  },
+
+  // Version logs management
+  getVersionLogs: (): VersionLogEntry[] => {
+    const raw = localStorage.getItem(STORAGE_KEYS.VERSION_LOGS)
+    return raw ? JSON.parse(raw) : []
+  },
+
+  setVersionLogs: (entries: VersionLogEntry[]) => {
+    localStorage.setItem(STORAGE_KEYS.VERSION_LOGS, JSON.stringify(entries))
   },
 
   setTheme: (theme: "light" | "dark") => {

@@ -244,6 +244,56 @@ export function AssetManagement({ user }: AssetManagementProps) {
     toast({ title: "SKU Dibuat", description: `SKU: ${sku}` })
   }
 
+  // Barcode validation helpers for linear barcodes (EAN-13, EAN-8, UPC-A)
+  const calculateEAN13CheckDigit = (num12: string) => {
+    const digits = num12.split("").map((d) => Number(d))
+    const sum = digits.reduce((acc, d, idx) => acc + d * (idx % 2 === 0 ? 1 : 3), 0)
+    const mod = sum % 10
+    return mod === 0 ? 0 : 10 - mod
+  }
+
+  const validateEAN13 = (value: string) => {
+    if (!/^\d{13}$/.test(value)) return false
+    const check = Number(value[12])
+    const calc = calculateEAN13CheckDigit(value.slice(0, 12))
+    return check === calc
+  }
+
+  const validateEAN8 = (value: string) => {
+    if (!/^\d{8}$/.test(value)) return false
+    const digits = value.split("").map((d) => Number(d))
+    const sum = digits.slice(0, 7).reduce((acc, d, idx) => acc + d * (idx % 2 === 0 ? 3 : 1), 0)
+    const check = (10 - (sum % 10)) % 10
+    return check === digits[7]
+  }
+
+  const validateUPCA = (value: string) => {
+    if (!/^\d{12}$/.test(value)) return false
+    const digits = value.split("").map((d) => Number(d))
+    const sumOdd = digits.slice(0, 11).reduce((acc, d, idx) => acc + (idx % 2 === 0 ? d : 0), 0)
+    const sumEven = digits.slice(0, 11).reduce((acc, d, idx) => acc + (idx % 2 === 1 ? d : 0), 0)
+    const total = sumOdd * 3 + sumEven
+    const check = (10 - (total % 10)) % 10
+    return check === digits[11]
+  }
+
+  const tryAcceptBarcode = (raw: string): boolean => {
+    const trimmed = String(raw).trim()
+    // Only accept numeric linear barcodes
+    if (!/^\d{8}$|^\d{12}$|^\d{13}$/.test(trimmed)) {
+      toast({ title: "Barcode Tidak Valid", description: "Hanya menerima barcode batang numerik (EAN-8/UPC-A/EAN-13)", variant: "destructive" })
+      return false
+    }
+    const ok = trimmed.length === 13 ? validateEAN13(trimmed) : trimmed.length === 8 ? validateEAN8(trimmed) : validateUPCA(trimmed)
+    if (!ok) {
+      toast({ title: "Barcode Gagal Diverifikasi", description: "Checksum barcode tidak sesuai. Coba scan ulang.", variant: "destructive" })
+      return false
+    }
+    setAssetForm((prev) => ({ ...prev, sku: trimmed }))
+    toast({ title: "Barcode Terdeteksi", description: `SKU: ${trimmed}` })
+    return true
+  }
+
   const startBarcodeScan = async () => {
     try {
       setIsScanning(true)
@@ -359,7 +409,10 @@ export function AssetManagement({ user }: AssetManagementProps) {
           if (scanInterval) window.clearInterval(scanInterval)
           detected = true
           closeModal()
-          const simulated = `SKU-${Date.now().toString().slice(-6)}`
+          // Generate valid EAN-13 for simulation
+          const base = Array.from({ length: 12 }, () => Math.floor(Math.random() * 10)).join("")
+          const check = calculateEAN13CheckDigit(base)
+          const simulated = `${base}${check}`
           setAssetForm((prev) => ({ ...prev, sku: simulated }))
           toast({ title: "Barcode Disimulasikan", description: `SKU: ${simulated}` })
         }, 3000)
@@ -382,13 +435,13 @@ export function AssetManagement({ user }: AssetManagementProps) {
             try {
               const results = await detector.detect(video as unknown as CanvasImageSource)
               if (results && results.length > 0) {
-                detected = true
-                if (scanInterval) window.clearInterval(scanInterval)
-                closeModal()
                 const raw = results[0].rawValue || results[0].raw || ""
-                const value = String(raw)
-                setAssetForm((prev) => ({ ...prev, sku: value }))
-                toast({ title: "Barcode Terdeteksi", description: `SKU: ${value}` })
+                const accepted = tryAcceptBarcode(String(raw))
+                if (accepted) {
+                  detected = true
+                  if (scanInterval) window.clearInterval(scanInterval)
+                  closeModal()
+                }
               }
             } catch {
               // ignore per frame errors

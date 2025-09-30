@@ -1,4 +1,4 @@
-"use client"
+  "use client"
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
@@ -8,8 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Calendar, Search, Filter, Download, History, Trash2, Plus, Edit } from "lucide-react"
-import { storage, type LogEntry, type User } from "@/lib/storage"
+import { Calendar, Search, Filter, Download, History, Trash2, Plus, Edit, ListOrdered } from "lucide-react"
+import { storage, type LogEntry, type VersionLogEntry, type User } from "@/lib/storage"
 import { useToast } from "@/hooks/use-toast"
 
 interface HistoryLoggingProps {
@@ -35,8 +35,19 @@ export function HistoryLogging({ user }: HistoryLoggingProps) {
     details: "",
   })
 
+  // Version log state
+  const [versionLogs, setVersionLogs] = useState<VersionLogEntry[]>([])
+  const [isVersionDialogOpen, setIsVersionDialogOpen] = useState(false)
+  const [editingVersion, setEditingVersion] = useState<VersionLogEntry | null>(null)
+  const [versionForm, setVersionForm] = useState({
+    version: "",
+    date: new Date().toISOString().split("T")[0],
+    changesText: "",
+  })
+
   useEffect(() => {
     loadLogs()
+    loadVersionLogs()
   }, [])
 
   useEffect(() => {
@@ -46,6 +57,13 @@ export function HistoryLogging({ user }: HistoryLoggingProps) {
   const loadLogs = () => {
     const allLogs = storage.getLogs().sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     setLogs(allLogs)
+  }
+
+  const loadVersionLogs = () => {
+    const entries = storage
+      .getVersionLogs()
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    setVersionLogs(entries)
   }
 
   const applyFilters = () => {
@@ -183,6 +201,60 @@ export function HistoryLogging({ user }: HistoryLoggingProps) {
     storage.setLogs(updated)
     setLogs(updated.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()))
     toast({ title: "Log Dihapus", description: `Log ${logId} dihapus.` })
+  }
+
+  // Version log handlers
+  const openCreateVersion = () => {
+    setEditingVersion(null)
+    setVersionForm({ version: "", date: new Date().toISOString().split("T")[0], changesText: "" })
+    setIsVersionDialogOpen(true)
+  }
+
+  const openEditVersion = (entry: VersionLogEntry) => {
+    setEditingVersion(entry)
+    setVersionForm({ version: entry.version, date: entry.date, changesText: entry.changes.join("\n") })
+    setIsVersionDialogOpen(true)
+  }
+
+  const saveVersion = (e: React.FormEvent) => {
+    e.preventDefault()
+    const current = storage.getVersionLogs()
+    const changes = versionForm.changesText
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean)
+    if (changes.length === 0 || !versionForm.version.trim()) {
+      toast({ title: "Data tidak lengkap", description: "Versi dan minimal satu perubahan diperlukan.", variant: "destructive" })
+      return
+    }
+    if (editingVersion) {
+      const updated = current.map((v) => (v.id === editingVersion.id ? { ...editingVersion, version: versionForm.version.trim(), date: versionForm.date, changes } : v))
+      storage.setVersionLogs(updated)
+      setVersionLogs(updated.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()))
+      toast({ title: "Version Log Diperbarui", description: `Versi ${versionForm.version}` })
+    } else {
+      const newEntry: VersionLogEntry = {
+        id: Date.now().toString(),
+        version: versionForm.version.trim(),
+        date: versionForm.date,
+        changes,
+      }
+      const updated = [newEntry, ...current]
+      storage.setVersionLogs(updated)
+      setVersionLogs(updated.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()))
+      toast({ title: "Version Log Ditambahkan", description: `Versi ${versionForm.version}` })
+    }
+    setIsVersionDialogOpen(false)
+    setEditingVersion(null)
+  }
+
+  const deleteVersion = (id: string) => {
+    if (!confirm("Hapus versi ini?")) return
+    const current = storage.getVersionLogs()
+    const updated = current.filter((v) => v.id !== id)
+    storage.setVersionLogs(updated)
+    setVersionLogs(updated.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()))
+    toast({ title: "Version Log Dihapus" })
   }
 
   const formatTimestamp = (timestamp: string) => {
@@ -335,6 +407,84 @@ export function HistoryLogging({ user }: HistoryLoggingProps) {
         </CardContent>
       </Card>
 
+      {/* Version Log Section */}
+      <div className="flex justify-between items-center mt-8">
+        <div className="flex items-center gap-2">
+          <ListOrdered className="h-5 w-5" />
+          <h3 className="text-lg font-semibold">Version Log</h3>
+        </div>
+        <Button size="sm" onClick={openCreateVersion}>
+          <Plus className="h-4 w-4 mr-2" />
+          Tambah Versi
+        </Button>
+      </div>
+      <Card>
+        <CardContent className="p-4 space-y-4">
+          {versionLogs.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Belum ada version log.</p>
+          ) : (
+            versionLogs.map((entry) => (
+              <div key={entry.id} className="border rounded-lg p-4">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="text-sm text-muted-foreground">{new Date(entry.date).toLocaleDateString("id-ID")}</p>
+                    <h4 className="text-base font-semibold">Versi {entry.version}</h4>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => openEditVersion(entry)}>
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => deleteVersion(entry.id)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                <ul className="list-disc pl-5 mt-3 space-y-1">
+                  {entry.changes.map((c, idx) => (
+                    <li key={idx} className="text-sm">{c}</li>
+                  ))}
+                </ul>
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
+
+      {isVersionDialogOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-lg max-w-md w-full">
+            <div className="p-6">
+              <h3 className="text-lg font-semibold mb-4">{editingVersion ? "Edit Versi" : "Tambah Versi"}</h3>
+              <form onSubmit={saveVersion} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="verVersion">Versi</Label>
+                    <Input id="verVersion" value={versionForm.version} onChange={(e) => setVersionForm({ ...versionForm, version: e.target.value })} placeholder="Misal: 1.0.3" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="verDate">Tanggal</Label>
+                    <Input id="verDate" type="date" value={versionForm.date} onChange={(e) => setVersionForm({ ...versionForm, date: e.target.value })} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="verChanges">Perubahan (satu per baris)</Label>
+                  <textarea
+                    id="verChanges"
+                    className="w-full border rounded-md p-2 h-32"
+                    value={versionForm.changesText}
+                    onChange={(e) => setVersionForm({ ...versionForm, changesText: e.target.value })}
+                    placeholder="Contoh:\n- Tambah fitur scan barcode\n- Perbaikan bug UI"
+                  />
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <Button type="button" variant="outline" onClick={() => setIsVersionDialogOpen(false)}>Batal</Button>
+                  <Button type="submit">Simpan</Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Logs Table */}
       <Card>
         <CardContent className="p-0">
